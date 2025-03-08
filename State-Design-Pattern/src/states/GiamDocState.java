@@ -1,12 +1,10 @@
 package states;
 
-import interfaces.State;
-
-public class GiamDocState implements State {
+public class GiamDocState implements WorkState {
 
 	@Override
-	public void handleRequest() {
-		System.out.println("Đang ở trạng thái Giám đốc");
+	public void doWork() {
+		 System.out.println("Giam doc: Quan ly cong ty, dua ra quyet dinh chien luoc.");
 		
 	}
 

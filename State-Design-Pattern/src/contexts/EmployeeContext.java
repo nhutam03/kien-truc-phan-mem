@@ -1,16 +1,16 @@
 package contexts;
 
-import interfaces.State;
+import states.WorkState;
 
 public class EmployeeContext {
-	private State state;
+	private WorkState state;
 
-	public void setState(State state) {
+	public void setState(WorkState state) {
 		this.state = state;
 	}
 
 	public void applyState() {
-		this.state.handleRequest();
+		this.state.doWork();
 	}
 	
 

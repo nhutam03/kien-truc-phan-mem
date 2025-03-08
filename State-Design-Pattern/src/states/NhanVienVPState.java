@@ -1,12 +1,11 @@
 package states;
 
-import interfaces.State;
-
-public class NhanVienVPState implements State {
+public class NhanVienVPState implements WorkState {
 
 	@Override
-	public void handleRequest() {
-		System.out.println("Đang ở trạng thái Nhân viên văn phòng");
+	public void doWork() {
+		 System.out.println("Nhan vien VP: Pha tra.");
+	     System.out.println("Nhan vien VP: Phe duyet giay to.");
 		
 	}
 
