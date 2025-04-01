@@ -1,0 +1,38 @@
+version: '3'
+
+services:
+  # Service Prometheus
+  prometheus:
+    build:
+      context: ./prometheus
+      dockerfile: Dockerfile
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - monitoring_network
+
+  # Service Grafana
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring_network
+
+# Định nghĩa volumes
+volumes:
+  prometheus_data:
+  grafana_data:
+
+# Định nghĩa network
+networks:
+  monitoring_network:
+    driver: bridge
