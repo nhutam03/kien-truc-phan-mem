@@ -1,0 +1,72 @@
+version: '3'
+
+services:
+  # Vote Service (Frontend)
+  vote:
+    build:
+      context: ./vote
+      dockerfile: Dockerfile
+    ports:
+      - "5000:80"
+    environment:
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+    networks:
+      - frontend
+
+  # Result Service (Backend)
+  result:
+    build:
+      context: ./result
+      dockerfile: Dockerfile
+    ports:
+      - "5001:80"
+    environment:
+      - DB_HOST=db
+    depends_on:
+      - db
+    networks:
+      - backend
+
+  # Redis Service
+  redis:
+    image: redis:alpine
+    networks:
+      - frontend
+
+  # Worker Service
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - DB_HOST=db
+    depends_on:
+      - redis
+      - db
+    networks:
+      - frontend
+      - backend
+
+  # Postgres Service
+  db:
+    image: postgres:9.4
+    environment:
+      - POSTGRES_DB=votes
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+# Định nghĩa volumes
+volumes:
+  db_data:
+
+# Định nghĩa networks
+networks:
+  frontend:
+  backend:
