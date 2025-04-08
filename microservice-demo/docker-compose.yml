@@ -1,0 +1,112 @@
+services:
+  # Product Service
+  product-service:
+    build: ./product-service
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@product-db:5432/product_db
+    depends_on:
+      product-db:
+        condition: service_healthy
+
+  # Product Database
+  product-db:
+    image: postgres:14
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=product_db
+    volumes:
+      - product-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Order Service
+  order-service:
+    build: ./order-service
+    ports:
+      - "3002:3002"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@order-db:5432/order_db
+      - PRODUCT_SERVICE_URL=http://product-service:3001
+      - CUSTOMER_SERVICE_URL=http://customer-service:3003
+    depends_on:
+      order-db:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+      customer-service:
+        condition: service_started
+
+  # Order Database
+  order-db:
+    image: postgres:14
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=order_db
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Customer Service
+  customer-service:
+    build: ./customer-service
+    ports:
+      - "3003:3003"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@customer-db:5432/customer_db
+    depends_on:
+      customer-db:
+        condition: service_healthy
+
+  # Customer Database
+  customer-db:
+    image: postgres:14
+    ports:
+      - "5434:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=customer_db
+    volumes:
+      - customer-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - PRODUCT_SERVICE_URL=http://product-service:3001
+      - ORDER_SERVICE_URL=http://order-service:3002
+      - CUSTOMER_SERVICE_URL=http://customer-service:3003
+    depends_on:
+      product-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      customer-service:
+        condition: service_started
+
+volumes:
+  product-db-data:
+  order-db-data:
+  customer-db-data:
