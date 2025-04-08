@@ -67,3 +67,8 @@ docker-compose.override.yml
 # Database files
 *.sqlite
 *.db
+
+# Diagrams and documentation
+diagrams/
+*.md
+*.mmd
