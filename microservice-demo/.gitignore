@@ -72,3 +72,4 @@ docker-compose.override.yml
 diagrams/
 *.md
 *.mmd
+!KONG_README.md

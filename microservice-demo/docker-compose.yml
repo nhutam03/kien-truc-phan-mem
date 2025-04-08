@@ -89,24 +89,89 @@ services:
       timeout: 5s
       retries: 5
 
-  # API Gateway
-  api-gateway:
-    build: ./api-gateway
+  # Kong Database
+  kong-database:
+    image: postgres:14
     ports:
-      - "8080:8080"
+      - "5435:5432"
     environment:
-      - PRODUCT_SERVICE_URL=http://product-service:3001
-      - ORDER_SERVICE_URL=http://order-service:3002
-      - CUSTOMER_SERVICE_URL=http://customer-service:3003
+      - POSTGRES_USER=kong
+      - POSTGRES_PASSWORD=kong
+      - POSTGRES_DB=kong
+    volumes:
+      - kong-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kong"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Kong Migration
+  kong-migration:
+    image: kong:3.4.0
     depends_on:
+      kong-database:
+        condition: service_healthy
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=kong-database
+      - KONG_PG_USER=kong
+      - KONG_PG_PASSWORD=kong
+      - KONG_PG_DATABASE=kong
+    command: kong migrations bootstrap
+    restart: on-failure
+
+  # Kong API Gateway
+  kong:
+    image: kong:3.4.0
+    ports:
+      - "8000:8000" # Proxy
+      - "8001:8001" # Admin API
+      - "8443:8443" # Proxy SSL
+      - "8444:8444" # Admin API SSL
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=kong-database
+      - KONG_PG_USER=kong
+      - KONG_PG_PASSWORD=kong
+      - KONG_PG_DATABASE=kong
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout
+      - KONG_ADMIN_ACCESS_LOG=/dev/stdout
+      - KONG_PROXY_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001, 0.0.0.0:8444 ssl
+    depends_on:
+      kong-migration:
+        condition: service_started
       product-service:
         condition: service_started
       order-service:
         condition: service_started
       customer-service:
         condition: service_started
+    restart: on-failure
+
+  # Konga - Kong Admin UI
+  konga:
+    image: pantsel/konga:latest
+    ports:
+      - "1337:1337"
+    environment:
+      - NODE_ENV=production
+      - DB_ADAPTER=postgres
+      - DB_HOST=kong-database
+      - DB_PORT=5432
+      - DB_USER=kong
+      - DB_PASSWORD=kong
+      - DB_DATABASE=konga
+      - KONGA_HOOK_TIMEOUT=120000
+      - DB_PG_SCHEMA=public
+    depends_on:
+      kong:
+        condition: service_started
 
 volumes:
   product-db-data:
   order-db-data:
   customer-db-data:
+  kong-db-data:
