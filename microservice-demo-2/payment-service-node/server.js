@@ -347,6 +347,162 @@ app.post('/api/payment/circuit-breaker/reset', (req, res) => {
   });
 });
 
+// Visual Retry Pattern Test
+// Create a mock server endpoint that will fail a certain number of times before succeeding
+let failureCounter = {};
+
+app.post('/api/payment/test-retry-visual', async (req, res) => {
+  const requestId = req.body.requestId || 'default';
+  const failCount = req.body.failCount || 2;
+
+  // Initialize counter for this request ID if it doesn't exist
+  if (failureCounter[requestId] === undefined) {
+    failureCounter[requestId] = 0;
+    logger.info(`[Retry Test] New request ${requestId}: Will fail ${failCount} times before succeeding`);
+  }
+
+  // Increment attempt counter
+  failureCounter[requestId]++;
+
+  // Log the attempt
+  logger.info(`[Retry Test] Request ${requestId}: Attempt #${failureCounter[requestId]}`);
+
+  // If we haven't reached the failure count, fail the request
+  if (failureCounter[requestId] <= failCount) {
+    logger.info(`[Retry Test] Request ${requestId}: Failing attempt #${failureCounter[requestId]}`);
+    return res.status(500).json({
+      message: `Simulated failure for attempt #${failureCounter[requestId]}`,
+      requestId,
+      attempt: failureCounter[requestId],
+      willSucceedOn: failCount + 1
+    });
+  }
+
+  // Otherwise succeed
+  logger.info(`[Retry Test] Request ${requestId}: Succeeding on attempt #${failureCounter[requestId]}`);
+  res.json({
+    message: `Success on attempt #${failureCounter[requestId]}`,
+    requestId,
+    attempt: failureCounter[requestId],
+    totalAttempts: failCount + 1
+  });
+});
+
+// Endpoint to test automatic retry with axios
+app.get('/api/payment/test-auto-retry/:requestId', async (req, res) => {
+  const requestId = req.params.requestId || uuidv4();
+  const failCount = parseInt(req.query.failCount || '2');
+
+  try {
+    logger.info(`[Auto Retry Test] Starting test for request ${requestId} with ${failCount} expected failures`);
+
+    // Make a request to our test endpoint that will fail 'failCount' times before succeeding
+    // Axios will automatically retry based on our axios-retry configuration
+    const startTime = Date.now();
+    const response = await axios.post(`http://localhost:${PORT}/api/payment/test-retry-visual`, {
+      requestId,
+      failCount
+    });
+    const endTime = Date.now();
+
+    logger.info(`[Auto Retry Test] Request ${requestId} completed successfully after ${endTime - startTime}ms`);
+
+    res.json({
+      message: 'Auto-retry test completed successfully',
+      requestId,
+      expectedFailures: failCount,
+      actualAttempts: response.data.attempt,
+      timeTaken: `${endTime - startTime}ms`,
+      responseData: response.data
+    });
+  } catch (error) {
+    logger.error(`[Auto Retry Test] Request ${requestId} failed after all retry attempts:`, error.message);
+
+    res.status(500).json({
+      message: 'Auto-retry test failed after all retry attempts',
+      requestId,
+      expectedFailures: failCount,
+      error: error.message
+    });
+  }
+});
+
+// Real-world payment processing with automatic retry
+app.post('/api/payment/process-with-retry', async (req, res) => {
+  try {
+    const { orderId, amount, paymentMethod } = req.body;
+
+    if (!orderId || !amount || !paymentMethod) {
+      return res.status(400).json({ message: 'OrderId, amount, and paymentMethod are required' });
+    }
+
+    // Log the start of payment processing
+    logger.info(`[Payment] Starting payment processing for order ${orderId}`);
+
+    // Simulate payment processing
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Generate transaction ID
+    const transactionId = uuidv4();
+
+    // Create payment record
+    const payment = new Payment({
+      orderId,
+      amount,
+      status: 'COMPLETED',
+      paymentMethod,
+      transactionId
+    });
+
+    const savedPayment = await payment.save();
+    logger.info(`[Payment] Payment processed successfully for order: ${orderId}`);
+
+    // Now we need to update the order status in Order Service
+    // This is where automatic retry happens if Order Service is temporarily unavailable
+    logger.info(`[Payment] Updating order status for order ${orderId} - this may retry automatically if needed`);
+
+    try {
+      // Simulate a call to Order Service that might fail
+      // In a real scenario, this would be a call to another microservice
+      // The axios-retry configuration will automatically retry this call if it fails
+      const orderUpdateResponse = await axios.post(`http://localhost:${PORT}/api/payment/test-retry-visual`, {
+        requestId: `order-update-${orderId}`,
+        failCount: 2 // Simulate 2 failures before success
+      });
+
+      logger.info(`[Payment] Order status updated successfully after ${orderUpdateResponse.data.attempt} attempts`);
+
+      // Return success response with details about the automatic retries
+      res.status(201).json({
+        payment: savedPayment,
+        orderUpdate: {
+          status: 'SUCCESS',
+          attempts: orderUpdateResponse.data.attempt,
+          message: `Order status updated automatically after ${orderUpdateResponse.data.attempt} attempts`
+        },
+        message: 'Payment processed and order updated successfully with automatic retry'
+      });
+    } catch (error) {
+      // Even if updating the order fails after all retries, we still return a partial success
+      // since the payment itself was processed
+      logger.error(`[Payment] Failed to update order status after multiple retry attempts: ${error.message}`);
+
+      res.status(207).json({
+        payment: savedPayment,
+        orderUpdate: {
+          status: 'FAILED',
+          error: error.message,
+          message: 'Failed to update order status after multiple automatic retry attempts'
+        },
+        message: 'Payment processed but order update failed after automatic retries'
+      });
+    }
+  } catch (error) {
+    logger.error(`[Payment] Error in payment processing: ${error.message}`);
+    res.status(500).json({ message: 'Error processing payment', error: error.message });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   logger.info(`Payment Service running on port ${PORT}`);
